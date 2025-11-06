@@ -188,21 +188,25 @@ int ModApiMainMenu::l_set_background(lua_State *L)
 	if (backgroundlevel == "background") {
 		retval |= engine->setTexture(TEX_LAYER_BACKGROUND, texturename,
 				tile_image, minsize);
+				printf(“%s %s:%d\n”, __func__, __FILE__, __LINE__); 
 	}
 
 	if (backgroundlevel == "overlay") {
 		retval |= engine->setTexture(TEX_LAYER_OVERLAY, texturename,
 				tile_image, minsize);
+				printf(“%s %s:%d\n”, __func__, __FILE__, __LINE__); 
 	}
 
 	if (backgroundlevel == "header") {
 		retval |= engine->setTexture(TEX_LAYER_HEADER,  texturename,
 				tile_image, minsize);
+				printf(“%s %s:%d\n”, __func__, __FILE__, __LINE__); 				
 	}
 
 	if (backgroundlevel == "footer") {
 		retval |= engine->setTexture(TEX_LAYER_FOOTER, texturename,
 				tile_image, minsize);
+				printf(“%s %s:%d\n”, __func__, __FILE__, __LINE__); 
 	}
 
 	lua_pushboolean(L,retval);
