@@ -20,10 +20,73 @@
 #include "gui/guiOpenURL.h"
 #include "gui/guiVolumeChange.h"
 #include "localplayer.h"
+#ifdef _WIN32
+	#include <winsock2.h>
+	#include <ws2tcpip.h>
+	#include <iphlpapi.h>
+#else
+	#include <ifaddrs.h>
+	#include <netinet/in.h>
+	#include <arpa/inet.h>
+#endif
 
 /*
 	Text input system
 */
+
+
+static std::string get_local_ip_for_pause() {
+#ifdef _WIN32
+    ULONG outBufLen = 15000;
+    PIP_ADAPTER_ADDRESSES pAddresses = (IP_ADAPTER_ADDRESSES *)malloc(outBufLen);
+    if (!pAddresses) return "IP Introuvable";
+
+    DWORD dwRetVal = GetAdaptersAddresses(AF_INET, GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER, NULL, pAddresses, &outBufLen);
+    if (dwRetVal == ERROR_BUFFER_OVERFLOW) {
+        free(pAddresses);
+        pAddresses = (IP_ADAPTER_ADDRESSES *)malloc(outBufLen);
+        dwRetVal = GetAdaptersAddresses(AF_INET, GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER, NULL, pAddresses, &outBufLen);
+    }
+
+    if (dwRetVal == NO_ERROR) {
+        for (PIP_ADAPTER_ADDRESSES pCurr = pAddresses; pCurr; pCurr = pCurr->Next) {
+            for (PIP_ADAPTER_UNICAST_ADDRESS pUnicast = pCurr->FirstUnicastAddress; pUnicast; pUnicast = pUnicast->Next) {
+                if (pUnicast->Address.lpSockaddr->sa_family == AF_INET) {
+                    struct sockaddr_in *sin = (struct sockaddr_in *)pUnicast->Address.lpSockaddr;
+                    if ((ntohl(sin->sin_addr.s_addr) & IN_CLASSA_NET) != (INADDR_LOOPBACK & IN_CLASSA_NET)) {
+                        char ip_string[INET_ADDRSTRLEN];
+                        inet_ntop(AF_INET, &(sin->sin_addr), ip_string, INET_ADDRSTRLEN);
+                        free(pAddresses);
+                        return std::string(ip_string);
+                    }
+                }
+            }
+        }
+    }
+    if (pAddresses) free(pAddresses);
+    return "IP Not Found";
+#else
+    struct ifaddrs *list;
+    std::string final_ip = "IP Not Found";
+    if (getifaddrs(&list) == 0) {
+        for (struct ifaddrs *cur = list; cur != nullptr; cur = cur->ifa_next) {
+            if (cur->ifa_addr && cur->ifa_addr->sa_family == AF_INET) {
+                struct sockaddr_in *sin = (struct sockaddr_in *)cur->ifa_addr;
+                if ((ntohl(sin->sin_addr.s_addr) & IN_CLASSA_NET) == (INADDR_LOOPBACK & IN_CLASSA_NET)) {
+                    continue; 
+                }
+                char *ip_string = inet_ntoa(sin->sin_addr);
+                final_ip = std::string(ip_string);
+                break; 
+            }
+        }        
+        freeifaddrs(list);
+    }
+    return final_ip;
+#endif
+}
+
+
 
 struct TextDestNodeMetadata : public TextDest
 {
@@ -377,39 +440,33 @@ void GameFormSpec::showPauseMenu()
 
 	auto simple_singleplayer_mode = m_client->m_simple_singleplayer_mode;
 
-	float ypos = simple_singleplayer_mode ? 0.7f : 0.1f;
-	std::ostringstream os;
+float ypos = simple_singleplayer_mode ? 0.7f : 0.1f;
+    std::ostringstream os;
 
-	os << "formspec_version[1]" << SIZE_TAG
-		<< "button_exit[4," << (ypos++) << ";3,0.5;btn_continue;"
-		// TRANSLATORS: Pause menu button, try to keep the translation short
-		<< strgettext("Continue") << "]";
-
+    os << "formspec_version[1]" << SIZE_TAG
+        << "button_exit[4," << (ypos++) << ";3,0.5;btn_continue;"
+        << strgettext("Continue") << "]";
+		
 	if (!simple_singleplayer_mode) {
 		os << "button[4," << (ypos++) << ";3,0.5;btn_change_password;"
-			// TRANSLATORS: Pause menu button, try to keep the translation short
 			<< strgettext("Change Password") << "]";
 	} else {
 		os << "field[4.95,0;5,1.5;;" << strgettext("Game paused") << ";]";
 	}
 
 	os	<< "button[4," << (ypos++) << ";3,0.5;btn_settings;"
-		// TRANSLATORS: Try to keep the translation short
 		<< strgettext("Settings") << "]";
 
 #ifndef __ANDROID__
 #if USE_SOUND
 	os << "button[4," << (ypos++) << ";3,0.5;btn_sound;"
-		// TRANSLATORS: Pause menu button, try to keep the translation short
 		<< strgettext("Sound Volume") << "]";
 #endif
 #endif
 
 	os		<< "button_exit[4," << (ypos++) << ";3,0.5;btn_exit_menu;"
-		// TRANSLATORS: Pause menu button, try to keep the translation short
 		<< strgettext("Exit to Menu") << "]";
 	os		<< "button_exit[4," << (ypos++) << ";3,0.5;btn_exit_os;"
-		// TRANSLATORS: Pause menu button, try to keep the translation short (OS = Operating System)
 		<< strgettext("Exit to OS")   << "]";
 	if (!control_text.empty()) {
 	os		<< "textarea[7.5,0.25;3.9,6.25;;" << control_text << ";]";
@@ -418,7 +475,6 @@ void GameFormSpec::showPauseMenu()
 		<< "\n"
 		<<  strgettext("Game info:") << "\n";
 	const std::string &address = m_client->getAddressName();
-	// TRANSLATORS: Game mode (server or singleplayer)
 	os << strgettext("- Mode: ");
 	if (!simple_singleplayer_mode) {
 		if (address.empty())
@@ -429,6 +485,7 @@ void GameFormSpec::showPauseMenu()
 		os << strgettext("Singleplayer");
 	}
 	os << "\n";
+	os << strgettext("– IP: ") << get_local_ip_for_pause() << "\n";
 	if (simple_singleplayer_mode || address.empty()) {
 		static const std::string on = strgettext("On");
 		static const std::string off = strgettext("Off");

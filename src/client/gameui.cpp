@@ -20,6 +20,11 @@
 #include "profiler.h"
 #include "renderingengine.h"
 #include "version.h"
+#ifndef _WIN32
+#include <ifaddrs.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#endif
 
 inline static const char *yawToDirectionString(int yaw)
 {
@@ -329,6 +334,34 @@ void GameUI::toggleProfiler()
 		showTranslatedStatusText("Profiler hidden");
 	}
 }
+
+
+static std::string get_local_ip_for_pause_menu() {
+#ifdef _WIN32
+    return "IP (Windows not supported)"; 
+#else
+    struct ifaddrs *list;
+    if (getifaddrs(&list) == 0) {
+        for (struct ifaddrs *cur = list; cur != nullptr; cur = cur->ifa_next) {
+            if (cur->ifa_addr && cur->ifa_addr->sa_family == AF_INET) {
+                struct sockaddr_in *sin = (struct sockaddr_in *)cur->ifa_addr;
+                
+                if ((ntohl(sin->sin_addr.s_addr) & IN_CLASSA_NET) == (INADDR_LOOPBACK & IN_CLASSA_NET)) {
+                    continue; 
+                }
+                
+                char *ip_string = inet_ntoa(sin->sin_addr);
+                std::string final_ip(ip_string);
+                freeifaddrs(list);
+                return final_ip;
+            }
+        }        
+        freeifaddrs(list);
+    }
+    return "IP Not Found";
+#endif
+}
+
 
 void GameUI::clearText()
 {
